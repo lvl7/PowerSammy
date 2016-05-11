@@ -18,7 +18,7 @@ void qrMessReceived(std_msgs::String msg)
 	//std::string git = "https://github.com/lvl7/PowerSammy/wiki";
 //	std_msgs::String gitS;
 //	gitS.data = git;
-//	ROS_INFO_STREAM(msg);
+	ROS_INFO_STREAM(msg);
 //	geometry_msgs::Twist vel;
 	//   vel.linear.x = vel.linear.y = vel.linear.z = 0;
 //    vel.angular.x = vel.angular.y = vel.angular.z = 0;
