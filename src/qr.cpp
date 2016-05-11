@@ -8,9 +8,9 @@
 
 void qrMessReceived(std_msgs::String);
 
-ros::NodeHandle node;
-ros::Publisher pub = node.advertise<geometry_msgs::Twist>("/rosaria/cmd_vel", 100);
-ros::Subscriber sub = node.subscribe("/visp_auto_tracker/code_message", 100, &qrMessReceived);
+
+ros::Publisher pub;
+ros::Subscriber sub;
 
 
 void qrMessReceived(std_msgs::String msg)
@@ -31,13 +31,17 @@ void qrMessReceived(std_msgs::String msg)
 int main (int argc, char** argv)
 {
 	ros::init(argc, argv, "qr");
+	ros::NodeHandle node;
 	ros::Rate rate(10);
 
-//	while(ros::ok())
-//	{
-//		ros::spinOnce();
-//		rate.sleep();
-//	}
+    pub = node.advertise<geometry_msgs::Twist>("/rosaria/cmd_vel", 100);
+    sub = node.subscribe("/visp_auto_tracker/code_message", 100, &qrMessReceived);
+
+	while(ros::ok())
+	{
+		ros::spinOnce();
+		rate.sleep();
+	}
 	
 	ros::spin();
 	return 0;
