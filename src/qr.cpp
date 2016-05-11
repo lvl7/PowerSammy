@@ -25,7 +25,7 @@ void qrMessReceived(std_msgs::String msg)
 	//   vel.linear.x = vel.linear.y = vel.linear.z = 0;
     vel.angular.x = vel.angular.y = vel.angular.z = 0;
 	
-	if(!strcmp(git.c_str(), msg.data)) vel.linear.x = 0.03;
+	if(git == msg.data) vel.linear.x = 0.03;
 	pub.publish(msg);
 	
 }
