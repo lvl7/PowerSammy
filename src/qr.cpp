@@ -2,6 +2,8 @@
 //#include <string>
 //#include <sensor_msgs/LaserScan.h>
 //#include <cstdlib>
+#include <stdlib.h>
+
 
 #include <geometry_msgs/Twist.h>
 #include <std_msgs/String.h>
@@ -15,16 +17,16 @@ ros::Subscriber sub;
 
 void qrMessReceived(std_msgs::String msg)
 {
-	//std::string git = "https://github.com/lvl7/PowerSammy/wiki";
-//	std_msgs::String gitS;
-//	gitS.data = git;
+	std::string git = "https://github.com/lvl7/PowerSammy/wiki";
+	//std_msgs::String gitS;
+	//gitS.data = git;
 	ROS_INFO_STREAM(msg);
-//	geometry_msgs::Twist vel;
+	geometry_msgs::Twist vel;
 	//   vel.linear.x = vel.linear.y = vel.linear.z = 0;
-//    vel.angular.x = vel.angular.y = vel.angular.z = 0;
+    vel.angular.x = vel.angular.y = vel.angular.z = 0;
 	
-//	if(gitS.data == msg.data) vel.linear.x = 0.3;
-//	pub.publish(msg);
+	if(!strcmp(git.c_str(), msg.data)) vel.linear.x = 0.03;
+	pub.publish(msg);
 	
 }
 
