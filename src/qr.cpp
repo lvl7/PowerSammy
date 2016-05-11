@@ -10,10 +10,18 @@
 
 void qrMessReceived(std_msgs::String);
 
-
+ros::NodeHandle node;
+ros::Timer timer();
 ros::Publisher pub;
 ros::Subscriber sub;
 
+void stopMove()
+{
+	geometry_msgs::Twist vel;
+	//   vel.linear.x = vel.linear.y = vel.linear.z = 0;
+    vel.angular.x = vel.angular.y = vel.angular.z = 0;
+	pub.publish(vel);
+}
 
 void qrMessReceived(std_msgs::String msg)
 {
@@ -25,15 +33,19 @@ void qrMessReceived(std_msgs::String msg)
 	//   vel.linear.x = vel.linear.y = vel.linear.z = 0;
     vel.angular.x = vel.angular.y = vel.angular.z = 0;
 	
-	if(git == msg.data) vel.linear.x = 0.03;
-	pub.publish(vel);
+	if(git == msg.data)
+	{
+		vel.linear.x = 0.03;
+		pub.publish(vel);
+		static ros::Timer time = node.createTimer(ros::Duration(2), &stopMove, true);
+	}
+
 	
 }
 
 int main (int argc, char** argv)
 {
 	ros::init(argc, argv, "qr");
-	ros::NodeHandle node;
 	ros::Rate rate(10);
 
     pub = node.advertise<geometry_msgs::Twist>("/rosaria/cmd_vel", 100);
