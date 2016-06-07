@@ -12,6 +12,7 @@
 #include <std_msgs/String.h>
 #include <tf/transform_datatypes.h>
 #include <std_msgs/Float64.h>
+#include <dynamixel_msgs/JointState.h>
 
 void qrMessReceived(std_msgs::String);
 void posMessReceived(geometry_msgs::PoseStamped msg);
@@ -21,6 +22,8 @@ ros::Publisher velocityPub;
 ros::Publisher cameraPub;
 ros::Subscriber poseSub;
 ros::Subscriber qrMessSub;
+ros::Subscriber qrPosSub;
+ros::Subscriber cameraPosSub;
 
 int status = 0;
 // 0: czekaj na kod qr, jesli znajdzie i wczyta dobre dane, przejdz dalej
@@ -37,6 +40,10 @@ double angToMove = 0;       // o jaki kat ma sie obrocic na poczatku (z kodu qr,
 double angToMoveFinal = 0;  // o jaki kat am sie obrocic na koncu (z kodu qr, stopnie)
 double targetAng = 0;     // docelowy kat przy obracaniu sie (stopnie)
 double initAng = 0;         // poczatkowy kat przy obracaniu sie (stopnie)
+
+double cameraPos = 2.79;
+double cameraVel = 0.2;
+double cameraTriggerPos = 0;
 
 ros::Timer timeoutTimer;
 
@@ -66,6 +73,13 @@ void stopMove()
 
 // modul liczby
 double mabs(double arg){ return (arg>0)?arg:arg*-1; }
+
+void cameraPosReceived(dynamixel_msgs::JointState msg)
+{
+	cameraPos = msg.current_pos;
+	cameraVel = msg.velocity;
+	//ROS_INFO_STREAM(cameraPos);
+}
 
 void poseDataReceived(nav_msgs::Odometry msg)
 {
@@ -117,8 +131,8 @@ void poseDataReceived(nav_msgs::Odometry msg)
 			if(angToMove < 0) vel.angular.z = -1*vel.angular.z;
 			if(mabs(targetAng - currAng) < 30)
 				vel.angular.z = vel.angular.z*(mabs(targetAng - currAng)/30);
-			//ROS_INFO_STREAM("VEL:");
-			//ROS_INFO_STREAM(vel.angular.z);
+			ROS_INFO_STREAM("VEL:");
+			ROS_INFO_STREAM(vel.angular.z);
 			velocityPub.publish(vel);
 		}
 		else
@@ -197,6 +211,28 @@ void poseDataReceived(nav_msgs::Odometry msg)
 	
 }
 
+void qrPosReceived(geometry_msgs::PoseStamped msg)
+{
+	tf::Quaternion quat(msg.pose.orientation.y, msg.pose.orientation.y,
+						msg.pose.orientation.z, msg.pose.orientation.w);
+	tf::Matrix3x3 mat(quat);
+	double r, p, y;
+	mat.getRPY(r, p, y);
+	ROS_INFO_STREAM("");
+	ROS_INFO_STREAM("X:");
+	ROS_INFO_STREAM(msg.pose.position.x);
+	ROS_INFO_STREAM("Y:");
+	ROS_INFO_STREAM(msg.pose.position.y);
+	ROS_INFO_STREAM("Z:");
+	ROS_INFO_STREAM(msg.pose.position.z);
+	ROS_INFO_STREAM("R:");
+	ROS_INFO_STREAM(r*360/(2*3.14));
+	ROS_INFO_STREAM("P:");
+	ROS_INFO_STREAM(p*360/(2*3.14));
+	ROS_INFO_STREAM("Y:");
+	ROS_INFO_STREAM(y*360/(2*3.14));
+}
+
 void qrDataReceived(std_msgs::String msg)
 {
 	timeoutTimer.stop();
@@ -205,32 +241,62 @@ void qrDataReceived(std_msgs::String msg)
 	{
 		ROS_INFO_STREAM(msg.data);
 		std::string qr_msg;
-		if(msg.data == std::string("D"))
-		{ 
-			distToMove = 2.15;
-			angToMove = -120;
-			angToMoveFinal = 30;	
-		}
-		else if(msg.data == std::string("B"))
-		{ 
-			distToMove = 2;
-			angToMove = 180;
-			angToMoveFinal = 45;
-		}
-		else if(msg.data == std::string("C"))
-		{ 
-			distToMove = 1;
-			angToMove = -135;
-			angToMoveFinal = 0;
+		if(msg.data == std::string(""))
+		{
+			static int dir = 1;
+			if(cameraPos > 4.25) dir = -1;
+			else if(cameraPos < 1.35) dir = 1;
+
+			double targetPos;
+			if(mabs(cameraVel) < 0.075)
+			{
+				targetPos = (dir == 1)?4.5:1;
+				std_msgs::Float64 posMsg;
+				posMsg.data = targetPos;
+				cameraPub.publish(posMsg);
+			}
 		}
 		else
-		{ 
-			distToMove = 0;
-			angToMove = 0;
-			angToMoveFinal = 0;
+		{
+			cameraTriggerPos = cameraPos;
+			ROS_INFO_STREAM("OBROT KAMERY NA QR");
+			ROS_INFO_STREAM((cameraTriggerPos - 2.79)*360/(2*3.14));
+			std_msgs::Float64 posMsg;			
+			//posMsg.data = cameraPos;
+			posMsg.data = 2.79;
+			cameraPub.publish(posMsg);
+			
+			if(msg.data == std::string("D"))
+			{ 
+				distToMove = 2.15;
+				angToMove = -120;
+				angToMoveFinal = 30;	
+			}
+			else if(msg.data == std::string("B"))
+			{ 
+				distToMove = 2;
+				angToMove = 180;
+				angToMoveFinal = 45;
+			}
+			else if(msg.data == std::string("C"))
+			{ 
+				distToMove = 1;
+				angToMove = -135;
+				angToMoveFinal = 0;
+			}
+			else
+			{ 
+				distToMove = 0;
+				angToMove = 0;
+				angToMoveFinal = 0;
    
+			}
+			if((distToMove != 0)&&(angToMove!=0))
+			{
+				angToMove -= cameraTriggerPos;
+				status = 1;
+			}
 		}
-		if((distToMove != 0)&&(angToMove!=0)) status = 1;	
 	}
 }
 
@@ -252,6 +318,8 @@ int main (int argc, char** argv)
 	cameraPub = node->advertise<std_msgs::Float64>("/nie_controller/command", 100);
 	poseSub = node->subscribe("/rosaria/pose", 100, &poseDataReceived);
 	qrMessSub = node->subscribe("/visp_auto_tracker/code_message", 100, &qrDataReceived);
+	//qrPosSub = node->subscribe("visp_auto_tracker/object_position", 100, &qrPosReceived);
+	cameraPosSub = node->subscribe("/nie_controller/state", 100, &cameraPosReceived);
 
 	timeoutTimer = node->createTimer(ros::Duration(10), timeoutStop, true);
 	timeoutTimer.stop();
