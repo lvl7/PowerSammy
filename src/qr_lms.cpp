@@ -326,7 +326,7 @@ void sigHandler(int sig)
 int main (int argc, char** argv)
 {
 	signal(SIGINT, &sigHandler);
-	ros::init(argc, argv, "qr", ros::init_options::NoSigintHandler);
+	ros::init(argc, argv, "qr_lms", ros::init_options::NoSigintHandler);
 	node = new ros::NodeHandle;
 	ros::Rate rate(30);
 
