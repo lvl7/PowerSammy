@@ -26,12 +26,16 @@ ros::Subscriber qrPosSub;
 ros::Subscriber cameraPosSub;
 ros::Subscriber laserSub;
 
+// glowa kreci do wykrycia
+// powerbot obrot do glowy
+// laser sprawdza w ktore strone ma krecic, ZAPISZ KIERUNEK
+// powerbot kreci do prostopadle do sciany (az lasery +-15 rowne w stronie KIERUNEK)
+// powerbot 90 stopnie w przeciwna niz KIERUNEK
+// glowa 90 stopni w strone KIERUNEK
+// do przodu az KOD lub lasry mniej niz 10cm
+
+
 int status = 0;
-// 0: czekaj na kod qr, jesli znajdzie i wczyta dobre dane, przejdz dalej
-// 1: zapisz poczatkowe ustawienie i kat, oblicz docelowy kat, przejdz dalej
-// 2: obrot az aktualny kat = docelowy kat obrotu, przejdz dalej
-// 3: rucha az przejechana odleglosc = zadana, dalej
-// 4: obrot jak w pkcie 2. o drugi kat, KONIEC (status = 0) 
 
 double distToMove = 0;      // o ile ma sie ruszyc (z kodu qr, metry)
 double initX = 0;           // poczatkowa wspolrzedna x przy ruchu
@@ -45,6 +49,12 @@ double initAng = 0;         // poczatkowy kat przy obracaniu sie (stopnie)
 double cameraPos = 2.79;
 double cameraVel = 0.2;
 double cameraTriggerPos = 0;
+
+double rangeM15 = -100;
+double range0 = 0;
+double rangeP15 = 1;
+
+int kierunek = 0;
 
 ros::Timer timeoutTimer;
 
@@ -72,15 +82,9 @@ void stopMove()
 
 void laserDataReceived(sensor_msgs::LaserScan msg)
 {
-	//ROS_INFO_STREAM("ODL:");
-	//ROS_INFO_STREAM(msg.ranges[0]);
-	ROS_INFO_STREAM("");
-	ROS_INFO_STREAM("R_-15:");
-	ROS_INFO_STREAM(msg.ranges[75]);
-	ROS_INFO_STREAM("R_0:");
-	ROS_INFO_STREAM(msg.ranges[90]);
-	ROS_INFO_STREAM("R_+15:");
-	ROS_INFO_STREAM(msg.ranges[105]);
+    rangeM15 = msg.ranges[75];
+	range0 = msg.ranges[90];
+	rangeP15 = msg.ranges[105];
 }
 
 // modul liczby
@@ -105,8 +109,129 @@ void poseDataReceived(nav_msgs::Odometry msg)
 	double currAng = y*360/(2*3.14);
 	double currX = msg.pose.pose.position.x;
 	double currY = msg.pose.pose.position.y;
-	
+
+
 	if(status == 1) 
+	{
+		// zapisz poczatkowe wspolrzedne
+		initX = msg.pose.pose.position.x;
+		initY = msg.pose.pose.position.y;
+		initAng = currAng;
+
+		// oblicz docelowy kat, sprowadz do zakresu (-180 : 180)
+		targetAng  = initAng - cameraTriggerPos;
+	    while(mabs(targetAng) > 180)
+			targetAng += 360*((targetAng>0)?-1:1);
+
+		// nastaw timer, 5s + 10s na każde 90 stopni obrotu
+		double maxRotationTime = 5 + mabs(angToMove)*10/90;
+		timeoutTimer.stop();
+		timeoutTimer.setPeriod(ros::Duration(maxRotationTime));
+		timeoutTimer.start();
+		status = 2;
+	}
+	else if(status == 2) // obrot do zadanego kata
+	{
+		ROS_INFO_STREAM("CURR:");
+		ROS_INFO_STREAM(currAng);
+		ROS_INFO_STREAM("TARGET:");
+		ROS_INFO_STREAM(targetAng);
+		ROS_INFO_STREAM("DIFF:");
+		ROS_INFO_STREAM(mabs(targetAng - currAng));
+		geometry_msgs::Twist vel;
+	    vel.linear.x = vel.linear.y = vel.linear.z = 0;
+		vel.angular.x = vel.angular.y = vel.angular.z = 0;
+		
+		if(mabs(targetAng - currAng) > 1) // dopoki roznica > 1 stopnien
+		{
+			vel.angular.z = 0.5;
+			if(cameraTriggerPos > 0) vel.angular.z = -1*vel.angular.z;
+			if(mabs(targetAng - currAng) < 30)
+				vel.angular.z = vel.angular.z*(mabs(targetAng - currAng)/30);
+			ROS_INFO_STREAM("VEL:");
+			ROS_INFO_STREAM(vel.angular.z);
+			velocityPub.publish(vel);
+		}
+		else
+		{
+			stopMove();
+
+			// resetuj i nastaw timer, 5s + 5s na kazdy metr do przejechania
+			//double maxMoveTime = 5 + 5*distToMove;
+			//timeoutTimer.stop();
+			//timeoutTimer.setPeriod(ros::Duration(maxMoveTime));
+			//timeoutTimer.start();
+			
+			status = 3;
+		}
+		
+		
+	}
+	else if(status == 3) 
+	{
+		double diff = mabs(rangeP15) - mabs(rangeM15);
+		ROS_INFO_STREAM("DIFF:");
+		ROS_INFO_STREAM(diff);
+		geometry_msgs::Twist vel;
+	    vel.linear.x = vel.linear.y = vel.linear.z = 0;
+		vel.angular.x = vel.angular.y = vel.angular.z = 0;
+		
+		if( mabs(diff) > 0.05 )
+		{
+			vel.angular.z = 0.2;
+			if(rangeM15 < rangeP15) vel.angular.z = -1*vel.angular.z;
+			//if(diff < 0.15)
+			//	vel.angular.z = vel.angular.z*(diff*6.66);
+			//ROS_INFO_STREAM("VEL:");
+			//ROS_INFO_STREAM(vel.angular.z);
+			velocityPub.publish(vel);
+		}
+		else
+		{
+			ROS_INFO_STREAM("OK");
+			stopMove();
+
+			// resetuj i nastaw timer, 5s + 5s na kazdy metr do przejechania
+			//double maxMoveTime = 5 + 5*distToMove;
+			//timeoutTimer.stop();
+			//timeoutTimer.setPeriod(ros::Duration(maxMoveTime));
+			//timeoutTimer.start();
+			
+			status = 999;
+		}
+		
+		
+	}
+	/*
+	if(status == 1)
+	{
+		double diff = mabs(rangeM15) - mabs(rangeP15);
+		
+		ROS_INFO_STREAM("DIFF:");
+		ROS_INFO_STREAM(diff);
+		geometry_msgs::Twist vel;
+	    vel.linear.x = vel.linear.y = vel.linear.z = 0;
+		vel.angular.x = vel.angular.y = vel.angular.z = 0;
+		
+		if(diff > 0.05) // dopoki roznica > 1 stopnien
+		{
+			vel.angular.z = 0.5;
+			if((rangeM15 - rangeP15) < 0) vel.angular.z = -1*vel.angular.z;
+			if(diff < 0.15)
+				vel.angular.z = vel.angular.z*(diff*6.66);
+			ROS_INFO_STREAM("VEL:");
+			ROS_INFO_STREAM(vel.angular.z);
+			velocityPub.publish(vel);
+		}
+		else
+		{
+			stopMove();
+			status = 0;
+		}
+		}*/
+
+	
+	if(status == 101) 
 	{
 		// zapisz poczatkowe wspolrzedne
 		initX = msg.pose.pose.position.x;
@@ -125,7 +250,7 @@ void poseDataReceived(nav_msgs::Odometry msg)
 		timeoutTimer.start();
 		status = 2;
 	}
-	else if(status == 2) // obrot do zadanego kata
+	else if(status == 102) // obrot do zadanego kata
 	{
 		ROS_INFO_STREAM("CURR:");
 		ROS_INFO_STREAM(currAng);
@@ -161,7 +286,7 @@ void poseDataReceived(nav_msgs::Odometry msg)
 		}
 		
 	}
-	else if(status == 3)
+	else if(status == 103)
 	{
 		// oblicz ile aktualnie przejechane
 		double distX = initX - currX;
@@ -181,11 +306,11 @@ void poseDataReceived(nav_msgs::Odometry msg)
 
 		if( ( mabs(distToMove - currDist) > 0.05 ) && ( distToMove != 0 ) )
 		{
-			vel.linear.x = 0.3;
+			vel.linear.x = 0.3 * kierunek;
 			if(mabs(distToMove - currDist) < 0.4)
 				vel.linear.x = vel.linear.x*((distToMove - currDist)/0.4); // bylo 0.4
-			if((distToMove - currDist) < 0)
-				vel.linear.x = vel.linear.x * -1;
+			//if((distToMove - currDist) < 0)
+			//vel.linear.x = vel.linear.x * -1;
 			velocityPub.publish(vel);
 			
 		}
@@ -223,7 +348,7 @@ void poseDataReceived(nav_msgs::Odometry msg)
 	
 }
 
-void qrPosReceived(geometry_msgs::PoseStamped msg)
+/*void qrPosReceived(geometry_msgs::PoseStamped msg)
 {
 	tf::Quaternion quat(msg.pose.orientation.y, msg.pose.orientation.y,
 						msg.pose.orientation.z, msg.pose.orientation.w);
@@ -243,13 +368,13 @@ void qrPosReceived(geometry_msgs::PoseStamped msg)
 	ROS_INFO_STREAM(p*360/(2*3.14));
 	ROS_INFO_STREAM("Y:");
 	ROS_INFO_STREAM(y*360/(2*3.14));
-}
+}*/
 
 void qrDataReceived(std_msgs::String msg)
 {
 	timeoutTimer.stop();
 	
-	if(status==0)
+	if(status == 0)
 	{
 		ROS_INFO_STREAM(msg.data);
 		std::string qr_msg;
@@ -270,6 +395,7 @@ void qrDataReceived(std_msgs::String msg)
 		}
 		else
 		{
+
 			cameraTriggerPos = (cameraPos - 2.79)*360/(2*3.14);
 			ROS_INFO_STREAM("OBROT KAMERY NA QR");
 			ROS_INFO_STREAM(cameraTriggerPos);
@@ -277,7 +403,9 @@ void qrDataReceived(std_msgs::String msg)
 			//posMsg.data = cameraPos;
 			posMsg.data = 2.79;
 			cameraPub.publish(posMsg);
+			status = 1;
 			
+			/*
 			if(msg.data == std::string("D"))
 			{ 
 				distToMove = 2.15;
@@ -311,7 +439,7 @@ void qrDataReceived(std_msgs::String msg)
 				ROS_INFO_STREAM("NOWE");
 				ROS_INFO_STREAM(angToMove);
 				status = 1;
-			}
+				}*/
 		}
 	}
 }
@@ -338,7 +466,6 @@ int main (int argc, char** argv)
 	cameraPosSub = node->subscribe("/nie_controller/state", 100, &cameraPosReceived);
 	laserSub = node->subscribe("/scan", 100, &laserDataReceived);
 
-	status = 10;
 	std_msgs::Float64 initMsg;
 	initMsg.data = 2.79;
 	cameraPub.publish(initMsg);

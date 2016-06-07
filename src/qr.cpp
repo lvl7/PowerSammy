@@ -336,9 +336,8 @@ int main (int argc, char** argv)
 	qrMessSub = node->subscribe("/visp_auto_tracker/code_message", 100, &qrDataReceived);
 	//qrPosSub = node->subscribe("visp_auto_tracker/object_position", 100, &qrPosReceived);
 	cameraPosSub = node->subscribe("/nie_controller/state", 100, &cameraPosReceived);
-	laserSub = node->subscribe("/scan", 100, &laserDataReceived);
+	//laserSub = node->subscribe("/scan", 100, &laserDataReceived);
 
-	status = 10;
 	std_msgs::Float64 initMsg;
 	initMsg.data = 2.79;
 	cameraPub.publish(initMsg);
